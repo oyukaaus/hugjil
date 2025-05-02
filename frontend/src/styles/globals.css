@@ -39,3 +39,7 @@ textarea:focus {
   outline: none;
   box-shadow: none;
 }
+
+.scrollbar-trigger {
+  background-color: #6f42c1;
+}
