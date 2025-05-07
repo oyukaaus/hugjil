@@ -12,6 +12,14 @@ const LoginPage = () => {
 
   const handlePhoneSubmit = async () => {
     if (phone) {
+      // const res = await fetch(`https://sms-api.telcocom.mn/sms-api/v1/sms/telco/send?tenantId=637ca1f1e6223943ac10384e&toNumber=${phone}&sms=TEXT`, {
+      //   method: "GET",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //     "Authorization": `Bearer ${process.env.telco_auth_token}`,
+      //   },
+      // });
+      // console.log("res: ", res)
       const res = await fetch(`${process.env.REACT_APP_BACKEND_API_URL}/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

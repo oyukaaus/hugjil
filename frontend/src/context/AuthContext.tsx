@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsAuthenticated(false);
     // Remove authentication state from localStorage
     localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('userId');
+    localStorage.removeItem('phone');
   };
 
   return (

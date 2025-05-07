@@ -4,159 +4,288 @@ import { BsChevronDown } from "react-icons/bs";
 import useAutoResizeTextArea from "@/hooks/useAutoResizeTextArea";
 import { DEFAULT_OPENAI_MODEL } from "@/shared/Constants";
 import ReactMarkdown from "react-markdown";
+import axios from "axios";
+import { useRouter } from "next/router";
+import { processMarkdownText } from "@/utils/markdown-utils";
+import { useChat } from "@/context/ChatContext";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-const Chat = (props: any) => {
-
+const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [showEmptyChat, setShowEmptyChat] = useState(true);
   const [conversation, setConversation] = useState<Message[]>([]);
   const [message, setMessage] = useState("");
   const [phoneNumber, setPhone] = useState("");
+  const [searchId, setSearchId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
 
   const textAreaRef = useAutoResizeTextArea();
   const bottomOfChatRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
-
   const selectedModel = DEFAULT_OPENAI_MODEL;
-  // Setup WebSocket connection
+  const router = useRouter();
+  const conversationId = router.query.cId as string;
+  const { addChat } = useChat();
+
   useEffect(() => {
+    if (conversationId) {
+      setSearchId(Number(conversationId));
+      axios.get(`${process.env.REACT_APP_BACKEND_API_URL}/chat/messages/${conversationId}`)
+        .then(res => {
+          const messages: Message[] = res.data.map((msg: any) => ({
+            role: msg.role,
+            content: processMarkdownText(msg.content) // Process existing messages
+          }));
+          setConversation(messages);
+        })
+        .catch(() => {
+          const savedChat = localStorage.getItem(`hugjil_chat_history_guest`);
+          if (savedChat) {
+            const parsedChat = JSON.parse(savedChat);
+            // Process saved messages 
+            const processedChat = parsedChat.map((msg: Message) => ({
+              ...msg,
+              content: processMarkdownText(msg.content)
+            }));
+            setConversation(processedChat);
+          }
+        });
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    const phone = localStorage.getItem("phone") || "";
+    setPhone(phone);
+    setUserId(1);
+  }, []);
+
+  useEffect(() => {
+    // Close any existing connection before creating a new one
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
+    }
+
     const ws = new WebSocket("ws://222.121.66.49:1217/");
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log("WebSocket connected");
+
+      // If we have an existing conversation and searchId, send a connection init message
+      if (searchId) {
+        ws.send(JSON.stringify({
+          init: true,
+          conversationId: searchId
+        }));
+      }
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log("WebSocket message received:", data);
+    ws.onmessage = async (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("WebSocket received data:", data);
 
-      const newMessage: Message = {
-        content: data.response || "No response",
-        role: "assistant",
-      };
+        // Check if this is a connection acknowledgment
+        if (data.status === "connected" || data.init === "success") {
+          console.log("WebSocket connection confirmed");
+          return;
+        }
 
-      setConversation((prev) => {
-        const updated = [...prev, newMessage];
-        saveToLocalStorage(updated);
-        return updated;
-      });
+        const newMessage: Message = {
+          content: data.response || "No response",
+          role: "assistant",
+        };
 
-      setIsLoading(false);
+        // Update conversation with the response
+        updateConversation(newMessage);
+
+        // Save the message to DB if userId exists
+        if (userId && searchId) {
+          try {
+            const response = await axios.post(`${process.env.REACT_APP_BACKEND_API_URL}/chat/message`, {
+              conversationId: searchId,
+              content: newMessage.content,
+              role: newMessage.role,
+            });
+             const newChat = response.data;
+            addChat(newChat);
+          } catch (error) {
+            console.error("Failed to save message to DB:", error);
+          }
+        }
+      } catch (error) {
+        console.error("Error processing WebSocket message:", error);
+      } finally {
+        // Ensure loading state is turned off after processing the response
+        setIsLoading(false);
+      }
     };
 
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
-      setErrorMessage("WebSocket connection error");
       setIsLoading(false);
+      // setErrorMessage("Connection error. Please try again.");
     };
 
     ws.onclose = () => {
       console.log("WebSocket connection closed");
+      // In case the connection closes while waiting for a response
+      if (isLoading) {
+        setIsLoading(false);
+        setErrorMessage("Connection closed. Please try again.");
+      }
     };
 
     return () => {
-      ws.close();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
     };
-  }, []);
+  }, [phoneNumber, userId, searchId]);
 
-  // Load phone from localStorage
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const phone = localStorage.getItem("phone") || "";
-      setPhone(phone);
-    }
-  }, []);
-
-  // Restore saved conversation
-  useEffect(() => {
-    if (!phoneNumber) return;
-    const savedChat = localStorage.getItem(`hugjil_chat_history_${phoneNumber}`);
-    if (savedChat) {
-      const parsed = JSON.parse(savedChat);
-      setConversation(parsed);
-      setShowEmptyChat(parsed.length === 0);
-    }
-  }, [phoneNumber]);
-
-  // Scroll to bottom on message
-  useEffect(() => {
-    if (bottomOfChatRef.current) {
-      bottomOfChatRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    bottomOfChatRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation]);
 
-  // Autosize textarea
-  useEffect(() => {
-    if (textAreaRef.current) {
-      textAreaRef.current.style.height = "24px";
-      textAreaRef.current.style.height = `${textAreaRef.current.scrollHeight}px`;
+  const saveToLocal = (conv: Message[]) => {
+    const key = phoneNumber ? `hugjil_chat_history_${phoneNumber}` : "hugjil_chat_history_guest";
+  
+    try {
+      const existing = localStorage.getItem(key);
+      let history: Message[] = [];
+  
+      if (existing) {
+        history = JSON.parse(existing);
+      }
+  
+      // Merge old + new messages
+      const updatedHistory = [...history, ...conv];
+  
+      localStorage.setItem(key, JSON.stringify(updatedHistory));
+    } catch (e) {
+      console.error("Failed to save chat history:", e);
     }
-  }, [message, textAreaRef]);
-
-  const saveToLocalStorage = (newConversation: Message[]) => {
-    if (!phoneNumber) return;
-    localStorage.setItem(`hugjil_chat_history_${phoneNumber}`, JSON.stringify(newConversation));
   };
+
+  const updateConversation = (msg: Message) => {
+    // Process markdown content to fix formatting issues using our utility
+    const processedContent = processMarkdownText(msg.content);
+
+    const processedMsg = {
+      ...msg,
+      content: processedContent
+    };
+
+    setConversation(prev => {
+      const updated = [...prev, processedMsg];
+      saveToLocal(updated);
+      return updated;
+    });
+  };
+
 
   const sendMessage = async (e: any) => {
     e.preventDefault();
-
-    if (message.trim().length < 1) {
+    if (!message.trim()) {
       setErrorMessage("Please enter a message.");
       return;
     }
 
-    setErrorMessage("");
+    setErrorMessage(""); // Clear previous error messages
+
+    // Store current message
+    const currentMessage = message.trim();
+    const userMessage: Message = { content: currentMessage, role: "user" };
+
+    // Optimistically update conversation with user message
+    const updatedConv = [...conversation, userMessage];
+    setConversation(updatedConv);
+    saveToLocal(updatedConv);
+
+    // Clear input and set loading state
+    setMessage("");
     setIsLoading(true);
 
-    const userMessage: Message = { content: message, role: "user" };
+    try {
+      let convId = searchId;
+      if (!convId && userId) {
+        const res = await axios.post(`${process.env.REACT_APP_BACKEND_API_URL}/chat/conversation`, {
+          userId,
+          topicName: currentMessage,
+        });
+        if (res.data?.id) {
+          convId = res.data.id;
+          setSearchId(convId);
+        }
+      }
 
-    const updated = [...conversation, userMessage];
-    setConversation(updated);
-    saveToLocalStorage(updated);
-    setMessage("");
-    setShowEmptyChat(false);
+      // Save the message to DB (both user and assistant)
+      if (convId && userId) {
+        await axios.post(`${process.env.REACT_APP_BACKEND_API_URL}/chat/message`, {
+          conversationId: convId,
+          content: userMessage.content,
+          role: userMessage.role,
+        });
+      }
 
-    // Send message via WebSocket
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ message }));
-    } else {
-      console.error("WebSocket is not connected.");
-      setErrorMessage("Unable to send message. WebSocket disconnected.");
-      setIsLoading(false);
+      // Send the message through WebSocket
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          message: currentMessage,
+          conversationId: convId
+        }));
+      } else {
+        setErrorMessage("WebSocket connection not open.");
+        setIsLoading(false); // Stop loading if WebSocket isn't connected
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      setIsLoading(false); // Stop loading if there's an error
+      setErrorMessage("Failed to send message. Please try again.");
     }
   };
 
-  const handleKeypress = (e: any) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(e);
-    }
-  };
+  const LoadingDots = () => (
+    <div className="flex items-center justify-center space-x-2">
+      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ping"></div>
+      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ping animation-delay-100"></div>
+      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ping animation-delay-200"></div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {conversation.length > 0 ? (
           conversation.map((msg, index) => (
-<div
-  key={index}
-  className={`w-fit max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap ${
-    msg.role === "user"
-      ? "ml-auto bg-[#693cca] text-white"
-      : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"
-  }`}
->
-  <ReactMarkdown>{msg.content}</ReactMarkdown>
-</div>
-
+            <div
+              key={index}
+              className={`w-fit max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap ${msg.role === "user"
+                  ? "ml-auto bg-[#693cca] text-white"
+                  : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"
+                }`}
+            >
+              <ReactMarkdown
+                components={{
+                  p: ({ node, ...props }) => <p className="my-2" {...props} />,
+                  strong: ({ node, ...props }) => <strong className="font-bold" {...props} />,
+                  h1: ({ node, ...props }) => <h1 className="text-xl font-bold my-3" {...props} />,
+                  h2: ({ node, ...props }) => <h2 className="text-lg font-bold my-2" {...props} />,
+                  h3: ({ node, ...props }) => <h3 className="text-md font-bold my-2" {...props} />,
+                  ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-2" {...props} />,
+                  ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-2" {...props} />,
+                  li: ({ node, ...props }) => <li className="my-1" {...props} />,
+                  a: ({ node, ...props }) => <a className="text-blue-600 underline" {...props} />,
+                  blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-gray-300 pl-4 my-2 italic" {...props} />
+                }}
+              >
+                {msg.content.replace(/\n\n+/g, '\n\n')}
+              </ReactMarkdown>
+            </div>
           ))
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -167,37 +296,42 @@ const Chat = (props: any) => {
             <h1 className="text-2xl font-semibold">Hugjil GPT</h1>
           </div>
         )}
+
+        {isLoading && (
+          <div className="w-fit max-w-[80%] px-4 py-2 rounded-lg mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+            <LoadingDots />
+          </div>
+        )}
+
         <div ref={bottomOfChatRef} />
       </div>
 
-      {/* Input Section */}
       <form onSubmit={sendMessage} className="sticky bottom-0 bg-white dark:bg-gray-900 p-4 border-t border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
           <textarea
-              style={{
-                height: "24px",
-                maxHeight: "200px",
-                overflowY: "hidden",
-              }}
             ref={textAreaRef}
             rows={1}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeypress}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(e);
+              }
+            }}
+            disabled={isLoading}
             placeholder="Send a message..."
-                className="m-0 w-full resize-none border-0 bg-transparent p-0 pr-7 focus:ring-0 focus-visible:ring-0 dark:bg-transparent pl-2 md:pl-0"
+            className="m-0 w-full resize-none border-0 bg-transparent p-0 pr-7 focus:ring-0 focus-visible:ring-0 dark:bg-transparent pl-2 md:pl-0 disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={isLoading}
-            className="p-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className="p-2 text-white bg-[#6f42c1] rounded-md  hover:bg-blue-700 disabled:opacity-50"
           >
             <FiSend className="h-5 w-5" />
           </button>
         </div>
-        {errorMessage && (
-          <p className="text-xs text-red-500 mt-1">{errorMessage}</p>
-        )}
+        {errorMessage && <p className="text-xs text-red-500 mt-1">{errorMessage}</p>}
       </form>
     </div>
   );
