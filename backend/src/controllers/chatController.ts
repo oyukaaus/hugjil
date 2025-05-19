@@ -27,18 +27,29 @@ export const startConversation = async (req: Request, res: Response) => {
 
 // 3. Add a message (user or assistant)
 export const addMessage = async (req: Request, res: Response) => {
-  const { conversationId, content, role } = req.body;
-  console.log("req: ", req.body)
+  const {  content, role } = req.body;
+  console.log("msg req: ", req.body)
   try {
-    const message = await prisma.message.create({
-      data: {
-        conversationId,
-        content,
-        role: role as Role,
-      },
-    });
+  // If the value is coming in as req.body.conversationId (string | undefined):
+const idStr = req.body.conversationId;      // e.g. "123"
+const conversationId = idStr ? parseInt(idStr, 10) : undefined;
+
+if (!conversationId || Number.isNaN(conversationId)) {
+  throw new Error("conversationId must be a valid integer");
+}
+
+const message = await prisma.message.create({
+  data: {
+    conversationId,            // now a number ✅
+    content,
+    role: role as Role,
+  },
+});
+
+    console.log("message: ", message)
     res.json(message);
   } catch (error) {
+    console.log("error: ", error)
     res.status(500).json({ error: 'Failed to save message' });
   }
 };
@@ -68,5 +79,34 @@ export const getConversationMessages = async (req: Request, res: Response) => {
     res.json(messages);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+};
+
+// 6. Delete all conversations and messages for a user
+export const deleteUserConversations = async (req: Request, res: Response) => {
+  const { userId } = req.params;
+  console.log("suerUd: ", req.params)
+  try {
+    const userConversations = await prisma.conversation.findMany({
+      where: { userId: Number(userId) },
+      select: { id: true },
+    });
+
+    const conversationIds = userConversations.map((c) => c.id);
+
+    // Delete messages first (because of FK constraints)
+    await prisma.message.deleteMany({
+      where: { conversationId: { in: conversationIds } },
+    });
+
+    // Then delete conversations
+    await prisma.conversation.deleteMany({
+      where: { id: { in: conversationIds } },
+    });
+
+    res.status(200).json({ message: 'Conversations and messages deleted successfully.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete user conversations.' });
   }
 };

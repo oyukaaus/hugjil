@@ -2,15 +2,12 @@ import React, { ReactNode, useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import MobileSidebar from "./MobileSidebar";
 import { AiOutlineMenu } from "react-icons/ai"; // Menu icon
-import { useAuth } from "@/context/AuthContext";
-import SidebarGuest from "./Sidebar_Guest";
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { isAuthenticated, logout } = useAuth();
   const [isComponentVisible, setIsComponentVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -55,7 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Desktop Sidebar */}
       <div className="dark hidden flex-shrink-0 bg-gray-900 md:flex md:w-[260px] md:flex-col">
         <div className="flex h-full min-h-0 flex-col">
-          {isAuthenticated ? <Sidebar /> : <SidebarGuest />}
+          <Sidebar />
         </div>
       </div>
 

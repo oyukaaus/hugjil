@@ -16,6 +16,7 @@ const Sidebar = () => {
   const [userId, setUserID] = useState("");
   const [chatlist, setChatList] = useState([]);
   const [loadingChatHistory, setLoadingChatHistory] = useState(false);
+  const { selectedId, setSelectedId } = useSharedState();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -40,7 +41,6 @@ const Sidebar = () => {
   };
 
   useEffect(() => {
-    console.log("isAuthenticated && userId: ", isAuthenticated, userId)
     if (isAuthenticated && userId) {
       loadChatList();
     }
@@ -69,22 +69,20 @@ const Sidebar = () => {
     router.push({ pathname: "/chat" });
   };
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) return null; // 👈 Optional: Hide sidebar if not authenticated
 
   return (
-    <div className="flex h-full w-full flex-col border-white/20 bg-[#693cca]">
-      {/* top: new-chat & chat list */}
-      <div className="flex-1 flex flex-col">
+    <div className="scrollbar-trigger flex h-full w-full flex-1 items-start border-white/20">
+      <nav className="flex h-full flex-1 flex-col space-y-1 p-2 w-full">
         <button
           onClick={startNewChat}
-          className="flex items-center gap-3 rounded-md border border-white/20 px-3 py-3 text-sm text-white hover:bg-gray-500/10 transition-colors duration-200"
+          className="flex py-3 px-3 items-center gap-3 rounded-md hover:bg-gray-500/10 transition-colors duration-200 text-white cursor-pointer text-sm mb-1 border border-white/20 w-full"
         >
           <AiOutlinePlus className="h-4 w-4" />
           Шинэ чат
         </button>
 
-        {/* chat list gets a fixed height (e.g. 18rem) and its own scroll */}
-        <ul className="mt-4 h-72 overflow-y-auto pr-2 hide-scrollbar">
+        <ul className="max-h-90 overflow-y-auto pr-2 mt-20 hide-scrollbar">
           {loadingChatHistory ? (
             <li className="text-center text-gray-400">Loading chats...</li>
           ) : chatlist.length > 0 ? (
@@ -101,16 +99,14 @@ const Sidebar = () => {
             <li className="text-center text-gray-400">No chats available</li>
           )}
         </ul>
-      </div>
-      {/* bottom: links always stick here */}
-      <div className="space-y-1 pt-4">
+
         <Link
           href="/clear-conversations"
+          className="flex py-3 px-3 items-center gap-3 rounded-md hover:bg-gray-500/10 transition-colors duration-200 text-white cursor-pointer text-sm"
           onClick={(e) => {
             e.preventDefault();
             clearConversations();
           }}
-          className="flex items-center gap-3 rounded-md px-3 py-3 text-sm text-white hover:bg-gray-500/10 transition-colors duration-200"
         >
           <AiOutlineMessage className="h-4 w-4" />
           Чатны түүх цэвэрлэх
@@ -118,7 +114,7 @@ const Sidebar = () => {
 
         <Link
           href="/help"
-          className="flex items-center gap-3 rounded-md px-3 py-3 text-sm text-white hover:bg-gray-500/10 transition-colors duration-200"
+          className="flex py-3 px-3 items-center gap-3 rounded-md hover:bg-gray-500/10 transition-colors duration-200 text-white cursor-pointer text-sm"
         >
           <BiLinkExternal className="h-4 w-4" />
           Тусламж
@@ -126,16 +122,16 @@ const Sidebar = () => {
 
         <button
           onClick={() => {
-            if (window.confirm("Та гарахдаа итгэлтэй байна уу?")) logout();
+            const confirmLogout = window.confirm("Та гарахдаа итгэлтэй байна уу?");
+            if (confirmLogout) logout();
           }}
-          className="flex items-center gap-3 rounded-md px-3 py-3 text-sm text-white hover:bg-gray-500/10 transition-colors duration-200"
+          className="flex py-3 px-3 items-center gap-3 rounded-md hover:bg-gray-500/10 transition-colors duration-200 text-white cursor-pointer text-sm"
         >
           <MdLogout className="h-4 w-4" />
           Гарах
         </button>
-      </div>
+      </nav>
     </div>
-
   );
 };
 

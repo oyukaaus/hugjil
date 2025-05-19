@@ -43,14 +43,14 @@ export const sendOTP = async (req: Request, res: Response) => {
 // Verify OTP and log in the user or register if necessary
 export const verifyOTP = async (req: Request, res: Response) => {
   const { phone, otp } = req.body
-
   try {
     // Fetch OTP from the database
     const otpRecord = await prisma.oTP.findUnique({
       where: { phone }
     })
-
     if (!otpRecord || otpRecord.otp !== otp) {
+      console.log("otprecor: ", otpRecord?.otp)
+      console.log("req: ", req.body.otp)
       return res.status(400).json({ message: 'Invalid OTP' })
     }
 
@@ -78,7 +78,7 @@ export const verifyOTP = async (req: Request, res: Response) => {
       { expiresIn: '1h' }
     )
 
-    return res.status(200).json({ message: 'Login successful', token })
+    return res.status(200).json({ message: 'Login successful', user })
   } catch (error) {
     console.error(error)
     return res.status(500).json({ message: 'Error verifying OTP' })

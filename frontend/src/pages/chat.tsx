@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, FormEvent } from "react";
 import { FiSend } from "react-icons/fi";
 import { BsChevronDown } from "react-icons/bs";
-import useAutoResizeTextArea from "@/hooks/useAutoResizeTextArea";
-import { DEFAULT_OPENAI_MODEL } from "@/shared/Constants";
 import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import { useRouter } from "next/router";
+
+import useAutoResizeTextArea from "@/hooks/useAutoResizeTextArea";
+import { DEFAULT_OPENAI_MODEL } from "@/shared/Constants";
 import { processMarkdownText } from "@/utils/markdown-utils";
 import { useChat } from "@/context/ChatContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface Message {
   role: "user" | "assistant";
@@ -15,323 +17,256 @@ interface Message {
 }
 
 const Chat = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [conversation, setConversation] = useState<Message[]>([]);
-  const [message, setMessage] = useState("");
-  const [phoneNumber, setPhone] = useState("");
-  const [searchId, setSearchId] = useState<number | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
+  /* ──────────────────────── state ──────────────────────── */
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
-  const textAreaRef = useAutoResizeTextArea();
-  const bottomOfChatRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const selectedModel = DEFAULT_OPENAI_MODEL;
+  const [guestCount, setGuestCount] = useState(0);
+  const [userId, setUserId] = useState<number>(1);
+
   const router = useRouter();
-  const conversationId = router.query.cId as string;
+  const [conversationId, setConversationId] = useState<string | null>(
+    (router.query.cId as string) ?? null
+  );
+
+  /* ──────────────────────── refs ──────────────────────── */
+  const wsRef = useRef<WebSocket | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const textAreaRef = useAutoResizeTextArea();
+
+  /* ──────────────────────── context ──────────────────────── */
   const { addChat } = useChat();
+  const { isAuthenticated } = useAuth();
+
+  /* ────────────────────── helpers ─────────────────────── */
+  const scrollToEnd = () => endRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  const appendMsg = (msg: Message) =>
+    setMessages((prev) => [...prev, { ...msg, content: processMarkdownText(msg.content) }]);
 
   useEffect(() => {
-    if (conversationId) {
-      setSearchId(Number(conversationId));
-      axios.get(`${process.env.REACT_APP_BACKEND_API_URL}/chat/messages/${conversationId}`)
-        .then(res => {
-          const messages: Message[] = res.data.map((msg: any) => ({
-            role: msg.role,
-            content: processMarkdownText(msg.content) // Process existing messages
-          }));
-          setConversation(messages);
-        })
-        .catch(() => {
-          const savedChat = localStorage.getItem(`hugjil_chat_history_guest`);
-          if (savedChat) {
-            const parsedChat = JSON.parse(savedChat);
-            // Process saved messages 
-            const processedChat = parsedChat.map((msg: Message) => ({
-              ...msg,
-              content: processMarkdownText(msg.content)
-            }));
-            setConversation(processedChat);
-          }
-        });
+    const storedUser = localStorage.getItem("userId");
+    if (storedUser) {
+      const parsedId = parseInt(storedUser, 10);
+      if (!isNaN(parsedId)) {
+        setUserId(parsedId);
+      }
     }
-  }, [conversationId]);
-
-  useEffect(() => {
-    const phone = localStorage.getItem("phone") || "";
-    setPhone(phone);
-    setUserId(1);
   }, []);
-
+  
   useEffect(() => {
-    // Close any existing connection before creating a new one
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
+    const id = router.query.cId as string | undefined;
+  
+    if (!id) {
+      // no chat selected  →  show blank screen
+      setConversationId(null);
+      setMessages([]);
+      wsRef.current?.close();
+      return;
     }
+  
+    if (id !== conversationId) {
+      setConversationId(id);          // load the newly selected thread
+      wsRef.current?.close();         // a fresh WebSocket will be opened by the other effect
+    }
+  }, [router.query.cId]);
+  
+  /* ───────────────────── load history ───────────────────── */
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!conversationId) return setMessages([]);
+      console.log("conv: ", conversationId)
+      try {
+        const rows = isAuthenticated
+          ? (await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/chat/messages/${conversationId}`)).data
+          : JSON.parse(localStorage.getItem("hugjil_chat_history_guest") || "[]");
+
+        setMessages(
+          rows.map((m: any) => ({
+            role: m.role,
+            content: processMarkdownText(m.content),
+          }))
+        );
+      } catch {
+        setErr("Failed to load messages.");
+      }
+    };
+
+    fetchHistory();
+  }, [conversationId, isAuthenticated]);
+
+  /* ─────────────────── websocket lifecycle ─────────────────── */
+  useEffect(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.close();
 
     const ws = new WebSocket("ws://222.121.66.49:1217/");
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("WebSocket connected");
-
-      // If we have an existing conversation and searchId, send a connection init message
-      if (searchId) {
-        ws.send(JSON.stringify({
-          init: true,
-          conversationId: searchId
-        }));
-      }
+      if (conversationId) ws.send(JSON.stringify({ init: true, conversationId }));
     };
 
-    ws.onmessage = async (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log("WebSocket received data:", data);
+    ws.onmessage = async ({ data }) => {
+      const payload = JSON.parse(data);
+      if (payload.status === "connected" || payload.init === "success") return;
 
-        // Check if this is a connection acknowledgment
-        if (data.status === "connected" || data.init === "success") {
-          console.log("WebSocket connection confirmed");
-          return;
+      const reply: Message = { role: "assistant", content: payload.response || "No response" };
+      appendMsg(reply);
+
+      if (isAuthenticated && conversationId) {
+        try {
+          const { data: saved } = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/chat/message`, {
+            conversationId,
+            content: reply.content,
+            role: reply.role,
+          });
+          addChat(saved);
+        } catch {
+          console.error("Save assistant message failed");
         }
-
-        const newMessage: Message = {
-          content: data.response || "No response",
-          role: "assistant",
-        };
-
-        // Update conversation with the response
-        updateConversation(newMessage);
-
-        // Save the message to DB if userId exists
-        if (userId && searchId) {
-          try {
-            const response = await axios.post(`${process.env.REACT_APP_BACKEND_API_URL}/chat/message`, {
-              conversationId: searchId,
-              content: newMessage.content,
-              role: newMessage.role,
-            });
-             const newChat = response.data;
-            addChat(newChat);
-          } catch (error) {
-            console.error("Failed to save message to DB:", error);
-          }
-        }
-      } catch (error) {
-        console.error("Error processing WebSocket message:", error);
-      } finally {
-        // Ensure loading state is turned off after processing the response
-        setIsLoading(false);
       }
+      setLoading(false);
     };
 
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setIsLoading(false);
-      // setErrorMessage("Connection error. Please try again.");
-    };
+    ws.onerror = () => setLoading(false);
+    ws.onclose = () => setLoading(false);
 
-    ws.onclose = () => {
-      console.log("WebSocket connection closed");
-      // In case the connection closes while waiting for a response
-      if (isLoading) {
-        setIsLoading(false);
-        setErrorMessage("Connection closed. Please try again.");
-      }
-    };
+    return () => ws.close();
+  }, [conversationId, isAuthenticated]);
 
-    return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
-      }
-    };
-  }, [phoneNumber, userId, searchId]);
+  /* ───────────────── scroll on new message ──────────────── */
+  useEffect(scrollToEnd, [messages]);
 
-  useEffect(() => {
-    bottomOfChatRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversation]);
-
-  const saveToLocal = (conv: Message[]) => {
-    const key = phoneNumber ? `hugjil_chat_history_${phoneNumber}` : "hugjil_chat_history_guest";
-  
-    try {
-      const existing = localStorage.getItem(key);
-      let history: Message[] = [];
-  
-      if (existing) {
-        history = JSON.parse(existing);
-      }
-  
-      // Merge old + new messages
-      const updatedHistory = [...history, ...conv];
-  
-      localStorage.setItem(key, JSON.stringify(updatedHistory));
-    } catch (e) {
-      console.error("Failed to save chat history:", e);
-    }
-  };
-
-  const updateConversation = (msg: Message) => {
-    // Process markdown content to fix formatting issues using our utility
-    const processedContent = processMarkdownText(msg.content);
-
-    const processedMsg = {
-      ...msg,
-      content: processedContent
-    };
-
-    setConversation(prev => {
-      const updated = [...prev, processedMsg];
-      saveToLocal(updated);
-      return updated;
-    });
-  };
-
-
-  const sendMessage = async (e: any) => {
+  /* ───────────────────── send handler ───────────────────── */
+  const handleSend = async (e: FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) {
-      setErrorMessage("Please enter a message.");
-      return;
+    if (!input.trim()) return setErr("Асуултаа оруулна уу");
+
+    if (!isAuthenticated && guestCount >= 10)
+      return setErr("Нэвтэрч ороод үргэлжлүүлэн ашиглана уу.");
+
+    setErr("");
+    setGuestCount((c) => c + (!isAuthenticated ? 1 : 0));
+
+    const userMsg: Message = { role: "user", content: input.trim() };
+    appendMsg(userMsg);
+    setInput("");
+    setLoading(true);
+
+    /* create conversation first time */
+    let id = conversationId;
+    if (!id && isAuthenticated) {
+      const { data } = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/chat/conversation`, {
+        userId,
+        topicName: userMsg.content,
+      });
+      id = String(data.id);
+      setConversationId(id);
+      router.replace({ query: { cId: id } }, undefined, { shallow: true });
     }
 
-    setErrorMessage(""); // Clear previous error messages
+    /* save user message */
+    if (isAuthenticated && id)
+      axios.post(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/chat/message`, {
+        conversationId: id,
+        content: userMsg.content,
+        role: userMsg.role,
+      });
 
-    // Store current message
-    const currentMessage = message.trim();
-    const userMessage: Message = { content: currentMessage, role: "user" };
-
-    // Optimistically update conversation with user message
-    const updatedConv = [...conversation, userMessage];
-    setConversation(updatedConv);
-    saveToLocal(updatedConv);
-
-    // Clear input and set loading state
-    setMessage("");
-    setIsLoading(true);
-
-    try {
-      let convId = searchId;
-      if (!convId && userId) {
-        const res = await axios.post(`${process.env.REACT_APP_BACKEND_API_URL}/chat/conversation`, {
-          userId,
-          topicName: currentMessage,
-        });
-        if (res.data?.id) {
-          convId = res.data.id;
-          setSearchId(convId);
-        }
-      }
-
-      // Save the message to DB (both user and assistant)
-      if (convId && userId) {
-        await axios.post(`${process.env.REACT_APP_BACKEND_API_URL}/chat/message`, {
-          conversationId: convId,
-          content: userMessage.content,
-          role: userMessage.role,
-        });
-      }
-
-      // Send the message through WebSocket
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          message: currentMessage,
-          conversationId: convId
-        }));
-      } else {
-        setErrorMessage("WebSocket connection not open.");
-        setIsLoading(false); // Stop loading if WebSocket isn't connected
-      }
-    } catch (error) {
-      console.error("Failed to send message:", error);
-      setIsLoading(false); // Stop loading if there's an error
-      setErrorMessage("Failed to send message. Please try again.");
-    }
+    /* send to websocket */
+    wsRef.current?.readyState === WebSocket.OPEN
+      ? wsRef.current.send(JSON.stringify({ conversationId: id, message: userMsg.content }))
+      : setLoading(false);
   };
 
+  /* ─────────────────────── render ──────────────────────── */
   const LoadingDots = () => (
-    <div className="flex items-center justify-center space-x-2">
-      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ping"></div>
-      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ping animation-delay-100"></div>
-      <div className="w-2 h-2 bg-gray-400 rounded-full animate-ping animation-delay-200"></div>
+    <div className="flex space-x-2">
+      <div className="w-2 h-2 rounded-full bg-gray-400 animate-ping" />
+      <div className="w-2 h-2 rounded-full bg-gray-400 animate-ping delay-100" />
+      <div className="w-2 h-2 rounded-full bg-gray-400 animate-ping delay-200" />
     </div>
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-[60%] mx-auto">
+      {/* messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {conversation.length > 0 ? (
-          conversation.map((msg, index) => (
-            <div
-              key={index}
-              className={`w-fit max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap ${msg.role === "user"
-                  ? "ml-auto bg-[#693cca] text-white"
-                  : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"
-                }`}
-            >
-              <ReactMarkdown
-                components={{
-                  p: ({ node, ...props }) => <p className="my-2" {...props} />,
-                  strong: ({ node, ...props }) => <strong className="font-bold" {...props} />,
-                  h1: ({ node, ...props }) => <h1 className="text-xl font-bold my-3" {...props} />,
-                  h2: ({ node, ...props }) => <h2 className="text-lg font-bold my-2" {...props} />,
-                  h3: ({ node, ...props }) => <h3 className="text-md font-bold my-2" {...props} />,
-                  ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-2" {...props} />,
-                  ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-2" {...props} />,
-                  li: ({ node, ...props }) => <li className="my-1" {...props} />,
-                  a: ({ node, ...props }) => <a className="text-blue-600 underline" {...props} />,
-                  blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-gray-300 pl-4 my-2 italic" {...props} />
-                }}
-              >
-                {msg.content.replace(/\n\n+/g, '\n\n')}
-              </ReactMarkdown>
-            </div>
-          ))
+        {messages.length ? (
+          messages.map((m, i) => {
+            const isUser = m.role === "user";
+            let text = m.content;
+            if (text.startsWith('"') && text.endsWith('"')) text = JSON.parse(text);
+
+            return (
+              <div >
+              <div key={i} className={`group relative max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap
+                ${isUser ? "ml-auto border bg-[#e6e5e9] text-gray-800 rounded"
+                          : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"}`}>
+                <ReactMarkdown>{text.replace(/\n+/g, "\n")}</ReactMarkdown>
+              </div>
+                {!isUser && (
+                  <button style={{marginTop:5, height:20, width:20, }}
+                    onClick={() => navigator.clipboard.writeText(text)}
+                    className="flex items-end  gap-1 
+                       bg-white text-xs text-gray-600 
+                       dark:text-gray-300 lex "
+                  >
+                    <img src="https://cdn-icons-png.flaticon.com/512/1621/1621635.png"></img>
+                  </button>
+                )}
+              </div>
+            );
+          })
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <div className="mb-4">
-              <span className="text-sm">Model: {selectedModel.name}</span>
-              <BsChevronDown className="inline ml-2 text-gray-500" />
-            </div>
+            {/* <span className="mb-4 text-sm">
+              Model: {selectedModel.name} <BsChevronDown className="inline ml-2" />
+            </span> */}
             <h1 className="text-2xl font-semibold">Hugjil GPT</h1>
           </div>
         )}
 
-        {isLoading && (
-          <div className="w-fit max-w-[80%] px-4 py-2 rounded-lg mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+        {loading && (
+          <div className="max-w-[80%] px-4 py-2 rounded-lg bg-[#eef1f3] text-gray-800 dark:bg-gray-700">
             <LoadingDots />
           </div>
         )}
-
-        <div ref={bottomOfChatRef} />
+        <div ref={endRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="sticky bottom-0 bg-white dark:bg-gray-900 p-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
+      {/* input */}
+      <form
+        onSubmit={handleSend}
+        className="sticky bottom-0 border-t bg-white dark:bg-gray-900 p-4"
+      >
+        <div className="flex gap-2">
           <textarea
             ref={textAreaRef}
             rows={1}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            value={input}
+            disabled={loading}
+            placeholder="Send a message..."
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage(e);
+                handleSend(e);
               }
             }}
-            disabled={isLoading}
-            placeholder="Send a message..."
-            className="m-0 w-full resize-none border-0 bg-transparent p-0 pr-7 focus:ring-0 focus-visible:ring-0 dark:bg-transparent pl-2 md:pl-0 disabled:opacity-50"
+            className="flex-1 resize-none bg-transparent focus:ring-0 disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={isLoading}
-            className="p-2 text-white bg-[#6f42c1] rounded-md  hover:bg-blue-700 disabled:opacity-50"
+            disabled={loading}
+            className="p-2 rounded-md bg-[#6f42c1] text-white disabled:opacity-50"
           >
             <FiSend className="h-5 w-5" />
           </button>
         </div>
-        {errorMessage && <p className="text-xs text-red-500 mt-1">{errorMessage}</p>}
+        {err && <p className="mt-1 text-xs text-red-500">{err}</p>}
       </form>
     </div>
   );
