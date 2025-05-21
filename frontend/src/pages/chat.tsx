@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState, FormEvent } from "react";
 import { FiSend } from "react-icons/fi";
-import { BsChevronDown } from "react-icons/bs";
 import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import { useRouter } from "next/router";
 
 import useAutoResizeTextArea from "@/hooks/useAutoResizeTextArea";
-import { DEFAULT_OPENAI_MODEL } from "@/shared/Constants";
 import { processMarkdownText } from "@/utils/markdown-utils";
 import { useChat } from "@/context/ChatContext";
 import { useAuth } from "@/context/AuthContext";
-
+import Image from 'next/image';
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -71,7 +69,7 @@ const Chat = () => {
       setConversationId(id);          // load the newly selected thread
       wsRef.current?.close();         // a fresh WebSocket will be opened by the other effect
     }
-  }, [router.query.cId]);
+  }, [router.query.cId, conversationId]);
   
   /* ───────────────────── load history ───────────────────── */
   useEffect(() => {
@@ -134,7 +132,7 @@ const Chat = () => {
     ws.onclose = () => setLoading(false);
 
     return () => ws.close();
-  }, [conversationId, isAuthenticated]);
+  }, [conversationId, isAuthenticated, addChat]);
 
   /* ───────────────── scroll on new message ──────────────── */
   useEffect(scrollToEnd, [messages]);
@@ -201,7 +199,7 @@ const Chat = () => {
             if (text.startsWith('"') && text.endsWith('"')) text = JSON.parse(text);
 
             return (
-              <div >
+              <>
               <div key={i} className={`group relative max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap
                 ${isUser ? "ml-auto border bg-[#e6e5e9] text-gray-800 rounded"
                           : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"}`}>
@@ -214,10 +212,15 @@ const Chat = () => {
                        bg-white text-xs text-gray-600 
                        dark:text-gray-300 lex "
                   >
-                    <img src="https://cdn-icons-png.flaticon.com/512/1621/1621635.png"></img>
+                    <Image
+  src="https://cdn-icons-png.flaticon.com/512/1621/1621635.png"
+  alt="Chat icon"
+  width={20}  // specify actual width
+  height={20} // specify actual height
+/>
                   </button>
                 )}
-              </div>
+              </>
             );
           })
         ) : (
