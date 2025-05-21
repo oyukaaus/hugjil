@@ -21,7 +21,7 @@ function useAnalytics() {
       $name: userId,
       $app: process.env.APP_NAME,
     });
-  }, [userId, isDevelopment]);
+  }, []);
 
   function trackEvent(eventName: string, tags: Record<string, string> = {}) {
     const allTags = {

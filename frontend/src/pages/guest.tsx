@@ -31,7 +31,15 @@ const Chat = () => {
   const [conversationId, setConversationId] = useState(router.query.cId as string);
   const { addChat } = useChat();
   const { isAuthenticated, logout } = useAuth();
-  // Load messages when the component mounts or conversationId changes  
+  // Load messages when the component mounts or conversationId changes
+  useEffect(() => {
+    if (conversationId === "0") {
+      setConversation([]);
+      setSearchId(null);
+      return;
+    }
+    loadMessages();
+  }, [conversationId, isAuthenticated]);
   
   const loadMessages = async () => {
   
@@ -62,36 +70,11 @@ const Chat = () => {
     }
   };
   
-  // Update the conversation state
-  const updateConversation = (msg: Message) => {
-    const processedContent = processMarkdownText(msg.content);
-    const processedMsg = {
-      ...msg,
-      content: processedContent,
-    };
-    setConversation((prev) => {
-      const updated = [...prev, processedMsg];
-      if (!isAuthenticated) {
-        saveToLocal(updated);
-      }
-      return updated;
-    });
-  };
-
-  useEffect(() => {
-    if (conversationId === "0") {
-      setConversation([]);
-      setSearchId(null);
-      return;
-    }
-    loadMessages();
-  }, [conversationId, isAuthenticated, loadMessages]);
-
   useEffect(() => {
     if (conversationId !=="0") {
       loadMessages();
     }
-  }, [conversationId, isAuthenticated, loadMessages]);
+  }, [conversationId, isAuthenticated]);
 
   // Initialize user data
   useEffect(() => {
@@ -178,7 +161,7 @@ const Chat = () => {
         ws.close();
       }
     };
-  }, [phoneNumber, userId, searchId, addChat, isLoading, updateConversation]);
+  }, [phoneNumber, userId, searchId]);
 
   // Scroll to the bottom of the chat when the conversation updates
   useEffect(() => {
@@ -199,6 +182,22 @@ const Chat = () => {
     } catch (e) {
       console.error("Failed to save chat history:", e);
     }
+  };
+
+  // Update the conversation state
+  const updateConversation = (msg: Message) => {
+    const processedContent = processMarkdownText(msg.content);
+    const processedMsg = {
+      ...msg,
+      content: processedContent,
+    };
+    setConversation((prev) => {
+      const updated = [...prev, processedMsg];
+      if (!isAuthenticated) {
+        saveToLocal(updated);
+      }
+      return updated;
+    });
   };
 
   // Send a message via WebSocket

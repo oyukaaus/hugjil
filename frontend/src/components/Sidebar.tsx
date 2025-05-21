@@ -44,7 +44,7 @@ const Sidebar = () => {
     if (isAuthenticated && userId) {
       loadChatList();
     }
-  }, [isAuthenticated, userId, loadChatList]);
+  }, [isAuthenticated, userId]);
 
   const callChat = (conversationId: string | number) => {
     if (!conversationId) return;
