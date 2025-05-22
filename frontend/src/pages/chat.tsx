@@ -3,11 +3,13 @@ import { FiSend } from "react-icons/fi";
 import ReactMarkdown from "react-markdown";
 import axios from "axios";
 import { useRouter } from "next/router";
-import Image from 'next/image';
+
 import useAutoResizeTextArea from "@/hooks/useAutoResizeTextArea";
 import { processMarkdownText } from "@/utils/markdown-utils";
 import { useChat } from "@/context/ChatContext";
 import { useAuth } from "@/context/AuthContext";
+import copy from '../assets/img/copy.png'; 
+import Image from 'next/image';
 
 interface Message {
   role: "user" | "assistant";
@@ -53,10 +55,10 @@ const Chat = () => {
       }
     }
   }, []);
-
+  
   useEffect(() => {
     const id = router.query.cId as string | undefined;
-
+  
     if (!id) {
       // no chat selected  →  show blank screen
       setConversationId(null);
@@ -64,13 +66,13 @@ const Chat = () => {
       wsRef.current?.close();
       return;
     }
-
+  
     if (id !== conversationId) {
       setConversationId(id);          // load the newly selected thread
       wsRef.current?.close();         // a fresh WebSocket will be opened by the other effect
     }
   }, [router.query.cId]);
-
+  
   /* ───────────────────── load history ───────────────────── */
   useEffect(() => {
     const fetchHistory = async () => {
@@ -200,24 +202,19 @@ const Chat = () => {
 
             return (
               <div >
-                <div key={i} className={`group relative max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap
+              <div key={i} className={`group relative max-w-[80%] px-4 py-2 rounded-lg whitespace-pre-wrap
                 ${isUser ? "ml-auto border bg-[#e6e5e9] text-gray-800 rounded"
-                    : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"}`}>
-                  <ReactMarkdown>{text.replace(/\n+/g, "\n")}</ReactMarkdown>
-                </div>
+                          : "mr-auto bg-[#eef1f3] text-gray-800 dark:bg-gray-700 dark:text-gray-100"}`}>
+                <ReactMarkdown>{text.replace(/\n+/g, "\n")}</ReactMarkdown>
+              </div>
                 {!isUser && (
-                  <button style={{ marginTop: 5, height: 20, width: 20, }}
+                  <button style={{marginTop:5, height:20, width:20, }}
                     onClick={() => navigator.clipboard.writeText(text)}
                     className="flex items-end  gap-1 
                        bg-white text-xs text-gray-600 
                        dark:text-gray-300 lex "
                   >
-                    <Image
-                      src="https://cdn-icons-png.flaticon.com/512/1621/1621635.png"
-                      alt="Chat icon"
-                      width={50}  // specify actual width
-                      height={50} // specify actual height
-                    />
+                    <Image src={copy} alt="Copy icon" />
                   </button>
                 )}
               </div>
