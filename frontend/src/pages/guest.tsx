@@ -315,7 +315,7 @@ const Chat = () => {
               <span className="text-sm">Model: {selectedModel.name}</span>
               <BsChevronDown className="inline ml-2 text-gray-500" />
             </div>
-            <h1 className="text-2xl font-semibold">Hugjil GPT</h1>
+            <h1 className="text-2xl font-semibold">Хөгжил GPT</h1>
           </div>
         )}
         {isLoading && (

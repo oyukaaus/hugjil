@@ -178,7 +178,7 @@ const MobileSidebar = (props: any) => {
                       </li>
                     ))
                   ) : (
-                    <li className="text-center text-gray-400">No chats available</li>
+                    <li className="text-center text-gray-400">Чатны түүх байхгүй байна.</li>
                   )}
                 </ul>
 

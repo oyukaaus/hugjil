@@ -225,7 +225,7 @@ const Chat = () => {
             {/* <span className="mb-4 text-sm">
               Model: {selectedModel.name} <BsChevronDown className="inline ml-2" />
             </span> */}
-            <h1 className="text-2xl font-semibold">Hugjil GPT</h1>
+            <h1 className="text-2xl font-semibold">Хөгжил GPT</h1>
           </div>
         )}
 

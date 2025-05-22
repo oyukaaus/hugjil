@@ -48,7 +48,7 @@ const SidebarGuest = () => {
   return (
     <div className="scrollbar-trigger flex h-full w-full flex-1 items-start border-white/20">
       <nav className="flex h-full flex-1 flex-col space-y-1 p-2 w-full">
-        <p>Guest</p>
+        <p style={{color:"white"}}>Зочин</p>
         <button
           onClick={startNewChat}
           className="flex py-3 px-3 items-center gap-3 rounded-md hover:bg-gray-500/10 transition-colors duration-200 text-white cursor-pointer text-sm mb-1 flex-shrink-0 border border-white/20 w-full"
@@ -59,7 +59,7 @@ const SidebarGuest = () => {
 
         <ul className="max-h-90 overflow-y-auto pr-2 mt-20 hide-scrollbar">
           {loadingChatHistory ? (
-            <li className="text-center text-gray-400">Loading chats...</li>
+            <li className="text-center text-gray-400">Уншиж байна...</li>
           ) : chatlist.length > 0 ? (
             chatlist.map((item: any, index: number) => (
               <li
@@ -72,7 +72,7 @@ const SidebarGuest = () => {
               </li>
             ))
           ) : (
-            <li className="text-center text-gray-400">No chats available</li>
+            <li className="text-center text-gray-400">Чатны түүх байхгүй байна.</li>
           )}
         </ul>
 

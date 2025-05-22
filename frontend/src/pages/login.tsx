@@ -16,7 +16,7 @@ const LoginPage = () => {
     if (success) {
       setStep(2);
     } else {
-      alert("Failed to send OTP");
+      alert("OTP илгээхэд алдаа гарлаа");
     }
   };
 
@@ -34,7 +34,7 @@ const LoginPage = () => {
     <div className="min-h-screen flex justify-center items-center">
       <div className="w-full max-w-md bg-white p-8 rounded-lg shadow-lg">
         <div className="text-center mb-6">
-          <p className="text-lg font-semibold text-gray-700">Login with OTP</p>
+          <p className="text-lg font-semibold text-gray-700">Нэвтрэх</p>
         </div>
 
         {step === 1 && (
@@ -50,9 +50,9 @@ const LoginPage = () => {
             </div>
             <button
               onClick={handlePhoneSubmit}
-              className="w-full py-3 bg-blue-600 text-white rounded-md"
+              className="w-full py-3 bg-[#6f42c1] text-white rounded-md"
             >
-              Send OTP
+               OTP илгээх
             </button>
           </>
         )}
@@ -72,7 +72,7 @@ const LoginPage = () => {
               onClick={handleOtpSubmit}
               className="w-full py-3 bg-blue-600 text-white rounded-md"
             >
-              Verify OTP
+              OTP баталгаажуулах
             </button>
           </>
         )}
