@@ -191,7 +191,7 @@ const Chat = () => {
   );
 
   return (
-    <div className="flex flex-col h-full w-[60%] mx-auto">
+    <div className="flex flex-col h-full mx-auto">
       {/* messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {messages.length ? (
