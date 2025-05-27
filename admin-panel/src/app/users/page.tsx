@@ -19,7 +19,7 @@ export default function Users() {
   const loadUsers = async () => {
     try {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/user`
+        `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/chat/user`
       );
       setUsers(response.data);
     } catch (error) {
