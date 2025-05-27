@@ -6,7 +6,7 @@ import {
   getConversationMessages,
   deleteUserConversations,
 } from '../controllers/chatController';
-import { getQuestions, getUsers } from 'controllers/userControllers';
+import { getQuestions, getUsers } from '../controllers/userControllers';
 
 const router = express.Router();
 
