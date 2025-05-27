@@ -3,7 +3,8 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 
 import authRoutes from './routes/authRoutes';
-import chatRoutes from './routes/chatRoutes'; // import the chatRoutes
+import chatRoutes from './routes/chatRoutes'; 
+import userRoutes from './routes/userRoutes'; 
 
 const app = express();
 const prisma = new PrismaClient();
@@ -14,7 +15,8 @@ app.use(express.json());
 
 // Route registration
 app.use('/api/auth', authRoutes);
-app.use('/api/chat', chatRoutes); // Register chatRoutes here
+app.use('/api/chat', chatRoutes);
+app.use('/api/user', userRoutes);
 
 // Server start
 app.listen(PORT, () => {
