@@ -1,5 +1,4 @@
-// import Header from "@/components/Header"
-import Sidebar from "@/components/Sidebar"
+import Sidebar from "./Sidebar"
 
 const AdminLayout = ({ children }: { children: React.ReactNode }) => (
   <div className="flex min-h-screen">
