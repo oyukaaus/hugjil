@@ -6,7 +6,6 @@ import {
   getConversationMessages,
   deleteUserConversations,
 } from '../controllers/chatController';
-import { getQuestions, getUsers } from '../controllers/userControllers';
 
 const router = express.Router();
 
@@ -16,6 +15,5 @@ router.post('/message', addMessage);
 router.get('/conversations/:userId', getUserConversations);
 router.get('/messages/:conversationId', getConversationMessages);
 router.delete('/conversations/:userId', deleteUserConversations);
-router.get('/user', getUsers);
-router.get('/user/questions', getQuestions);
+
 export default router;

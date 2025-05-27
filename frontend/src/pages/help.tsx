@@ -1,9 +1,4 @@
-// components/HelpPage.tsx
-import Link from "next/link";
-import { useState } from "react";
-
 const HelpPage = () => {
-  const [selectedArticle, setSelectedArticle] = useState(null);
 
   const articles = [
     {
